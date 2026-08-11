@@ -1,0 +1,126 @@
+From 40cc7e3e131e59a0c1dcd77157e44744a2b4eec8 Mon Sep 17 00:00:00 2001
+From: Eshaan Deshmukh <eshaan2031@icloud.com>
+Date: Mon, 10 Aug 2026 05:04:38 -0500
+Subject: [PATCH] x86/efi: Handle errors for efi_map_region_fixed()
+
+The function efi_map_region_fixed() ignores the errors returned from
+kernel_map_pages_in_pgd(). If mapping failes, this can cause page
+faults. Update __map_region() and efi_map_region_fixed() to return the
+error code from kernel_map_pages_in_pgd(). If there is an error,
+efi_map_region_fixed() logs an error message using pr_err(), disables
+EFI runtime services, and returns.
+
+Signed-off-by: Eshaan Deshmukh <eshaan2031@icloud.com>
+---
+ arch/x86/include/asm/efi.h     |  2 +-
+ arch/x86/platform/efi/efi.c    | 10 ++++++++--
+ arch/x86/platform/efi/efi_32.c |  6 +++++-
+ arch/x86/platform/efi/efi_64.c | 20 ++++++++++++++------
+ 4 files changed, 28 insertions(+), 10 deletions(-)
+
+diff --git a/arch/x86/include/asm/efi.h b/arch/x86/include/asm/efi.h
+index be58b7f5c..04952e064 100644
+--- a/arch/x86/include/asm/efi.h
++++ b/arch/x86/include/asm/efi.h
+@@ -128,7 +128,7 @@ extern bool efi_disable_ibt_for_runtime;
+ extern int __init efi_memblock_x86_reserve_range(void);
+ extern void __init efi_print_memmap(void);
+ extern void __init efi_map_region(efi_memory_desc_t *md);
+-extern void __init efi_map_region_fixed(efi_memory_desc_t *md);
++extern int __init efi_map_region_fixed(efi_memory_desc_t *md);
+ extern void efi_sync_low_kernel_mappings(void);
+ extern int __init efi_alloc_page_tables(void);
+ extern int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages);
+diff --git a/arch/x86/platform/efi/efi.c b/arch/x86/platform/efi/efi.c
+index 0c39adb96..4b875843a 100644
+--- a/arch/x86/platform/efi/efi.c
++++ b/arch/x86/platform/efi/efi.c
+@@ -735,8 +735,14 @@ static void __init kexec_enter_virtual_mode(void)
+ 	* Map efi regions which were passed via setup_data. The virt_addr is a
+ 	* fixed addr which was used in first kernel of a kexec boot.
+ 	*/
+-	for_each_efi_memory_desc(md)
+-		efi_map_region_fixed(md); /* FIXME: add error handling */
++	for_each_efi_memory_desc(md) {
++		if (efi_map_region_fixed(md)) {
++			pr_err("Failed to map fixed EFI region\n");
++			clear_bit(EFI_RUNTIME_SERVICES, &efi.flags);
++			return;
++		}
++
++	}
+ 
+ 	/*
+ 	 * Unregister the early EFI memmap from efi_init() and install
+diff --git a/arch/x86/platform/efi/efi_32.c b/arch/x86/platform/efi/efi_32.c
+index b2cc7b455..9307999b9 100644
+--- a/arch/x86/platform/efi/efi_32.c
++++ b/arch/x86/platform/efi/efi_32.c
+@@ -84,7 +84,11 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
+ 	return 0;
+ }
+ 
+-void __init efi_map_region_fixed(efi_memory_desc_t *md) {}
++int __init efi_map_region_fixed(efi_memory_desc_t *md)
++{
++	return 0;
++}
++
+ void __init parse_efi_setup(u64 phys_addr, u32 data_len) {}
+ 
+ efi_status_t efi_call_svam(efi_runtime_services_t * const *,
+diff --git a/arch/x86/platform/efi/efi_64.c b/arch/x86/platform/efi/efi_64.c
+index 5861008ea..05f1df6ca 100644
+--- a/arch/x86/platform/efi/efi_64.c
++++ b/arch/x86/platform/efi/efi_64.c
+@@ -269,12 +269,12 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
+ 	return 0;
+ }
+ 
+-static void __init __map_region(efi_memory_desc_t *md, u64 va)
++static int __init __map_region(efi_memory_desc_t *md, u64 va)
+ {
+ 	unsigned long flags = _PAGE_RW;
+ 	unsigned long pfn;
+ 	pgd_t *pgd = efi_mm.pgd;
+-
++	int error;
+ 	/*
+ 	 * EFI_RUNTIME_SERVICES_CODE regions typically cover PE/COFF
+ 	 * executable images in memory that consist of both R-X and
+@@ -299,9 +299,11 @@ static void __init __map_region(efi_memory_desc_t *md, u64 va)
+ 		flags |= _PAGE_ENC;
+ 
+ 	pfn = md->phys_addr >> PAGE_SHIFT;
+-	if (kernel_map_pages_in_pgd(pgd, pfn, va, md->num_pages, flags))
++	error = kernel_map_pages_in_pgd(pgd, pfn, va, md->num_pages, flags);
++	if (error)
+ 		pr_warn("Error mapping PA 0x%llx -> VA 0x%llx!\n",
+ 			   md->phys_addr, va);
++	return error;
+ }
+ 
+ void __init efi_map_region(efi_memory_desc_t *md)
+@@ -357,10 +359,16 @@ void __init efi_map_region(efi_memory_desc_t *md)
+  * md->virt_addr is the original virtual address which had been mapped in kexec
+  * 1st kernel.
+  */
+-void __init efi_map_region_fixed(efi_memory_desc_t *md)
++int __init efi_map_region_fixed(efi_memory_desc_t *md)
+ {
+-	__map_region(md, md->phys_addr);
+-	__map_region(md, md->virt_addr);
++	int error;
++
++	error = __map_region(md, md->phys_addr);
++
++	if (error)
++		return error;
++
++	return __map_region(md, md->virt_addr);
+ }
+ 
+ void __init parse_efi_setup(u64 phys_addr, u32 data_len)
+-- 
+2.55.0
+

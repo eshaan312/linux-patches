@@ -1,0 +1,46 @@
+From 452fbb880f5d9804308c72f413d6db08b7c0d715 Mon Sep 17 00:00:00 2001
+From: Eshaan Deshmukh <eshaan2031@icloud.com>
+Date: Mon, 10 Aug 2026 18:18:38 -0500
+Subject: [PATCH] scsi: libsas: Handle errors in  sas_ex_discover_expander()
+
+The function sas_ex_discover_expander() does not account for the
+potential failure of sas_port_alloc() for phy->port. It also calls
+BUG_ON in case sas_port_add fails for phy->port. Add a check for
+phy->port after sas_port_alloc() where if it is NULL, it cleans up the
+child allocated device and returns NULL. Add another check for
+sas_port_add() where if it returns an error code it frees phy->port,
+sets it to NULL, cleans up the child allocated device, and returns NULL.
+
+Signed-off-by: Eshaan Deshmukh <eshaan2031@icloud.com>
+---
+ drivers/scsi/libsas/sas_expander.c | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/scsi/libsas/sas_expander.c b/drivers/scsi/libsas/sas_expander.c
+index 1aa99e7c7..f9ae655a2 100644
+--- a/drivers/scsi/libsas/sas_expander.c
++++ b/drivers/scsi/libsas/sas_expander.c
+@@ -925,9 +925,18 @@ static struct domain_device *sas_ex_discover_expander(
+ 		return NULL;
+ 
+ 	phy->port = sas_port_alloc(&parent->rphy->dev, phy_id);
+-	/* FIXME: better error handling */
+-	BUG_ON(sas_port_add(phy->port) != 0);
++	if (!phy->port) {
++		sas_put_device(child);
++		return NULL;
++	}
+ 
++	res = sas_port_add(phy->port);
++	if (res) {
++		sas_port_free(phy->port);
++		phy->port = NULL;
++		sas_put_device(child);
++		return NULL;
++	}
+ 
+ 	switch (phy->attached_dev_type) {
+ 	case SAS_EDGE_EXPANDER_DEVICE:
+-- 
+2.55.0
+
