@@ -1,7 +1,8 @@
 From 3c0a6f0ff937f6fa4a4a8fb72029b71823828f0a Mon Sep 17 00:00:00 2001
 From: Eshaan Deshmukh <eshaan2031@icloud.com>
 Date: Mon, 10 Aug 2026 16:01:28 -0500
-Subject: [PATCH] scsi: libsas: Handle errors in sas_ex_add_parent_port()
+Subject: [PATCH v4 1/3] scsi: libsas: Handle errors in
+ sas_ex_add_parent_port()
 
 The function sas_ex_add_parent_port() uses BUG_ON() if sas_port_alloc()
 or sas_port_add() fails. Change sas_ex_add_parent_port() to return error

@@ -1,7 +1,7 @@
-From ecf4b347ec0b12ecb8cc0daf53f7dd85fba94c32 Mon Sep 17 00:00:00 2001
+From d3a530d0da581c8b989839d8cfb45e56993b11d6 Mon Sep 17 00:00:00 2001
 From: Eshaan Deshmukh <eshaan2031@icloud.com>
 Date: Mon, 10 Aug 2026 16:51:38 -0500
-Subject: [PATCH] scsi: libsas: Handle errors in sas_set_ex_phy()
+Subject: [PATCH v4 2/3] scsi: libsas: Handle errors in sas_set_ex_phy()
 
 The function sas_set_ex_phy() uses BUG_ON() if sas_phy_alloc() fails.
 Change it to return -ENOMEM error code if that happens. Change all the
@@ -15,7 +15,7 @@ Signed-off-by: Eshaan Deshmukh <eshaan2031@icloud.com>
  1 file changed, 17 insertions(+), 11 deletions(-)
 
 diff --git a/drivers/scsi/libsas/sas_expander.c b/drivers/scsi/libsas/sas_expander.c
-index f1a1417b0..1aa99e7c7 100644
+index f1a1417b0..ab6afbad3 100644
 --- a/drivers/scsi/libsas/sas_expander.c
 +++ b/drivers/scsi/libsas/sas_expander.c
 @@ -207,7 +207,7 @@ static enum sas_device_type to_dev_type(struct discover_resp *dr)
@@ -36,7 +36,7 @@ index f1a1417b0..1aa99e7c7 100644
  	if (new_phy) {
  		if (WARN_ON_ONCE(test_bit(SAS_HA_ATA_EH_ACTIVE, &ha->state)))
 -			return;
-+			return 0;
++			return -EBUSY;
  		phy->phy = sas_phy_alloc(&rphy->dev, phy_id);
  
 -		/* FIXME: error_handling */

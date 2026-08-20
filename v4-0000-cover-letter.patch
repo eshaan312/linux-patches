@@ -1,0 +1,19 @@
+From c6cc97a8e1759c4fb8e1972e36385408238749b2 Mon Sep 17 00:00:00 2001
+From: Eshaan Deshmukh <eshaan2031@icloud.com>
+Date: Tue, 18 Aug 2026 23:16:48 -0400
+Subject: [PATCH v4 0/3] Fix control flow in sas_ex_add_parent_port()
+
+Fix label control flow for the function sas_ex_add_parent_port(). Remove
+labels and move the code back to their original places.
+
+Eshaan Deshmukh (3):
+  scsi: libsas: Handle errors in sas_ex_add_parent_port()
+  scsi: libsas: Handle errors in sas_set_ex_phy()
+  scsi: libsas: Handle errors in  sas_ex_discover_expander()
+
+ drivers/scsi/libsas/sas_expander.c | 75 ++++++++++++++++++++----------
+ 1 file changed, 50 insertions(+), 25 deletions(-)
+
+-- 
+2.55.0
+
